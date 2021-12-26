@@ -7,7 +7,8 @@
  * An introduction to parallel programming, 2nd Edition
  * Peter Pacheco, Matthew Malensek
  *
- * Vitor Duarte FCT/UNL 2021
+ * Rodrigo Gomes FCT/UNL 2021
+ * Ruben Vaz
  * CAD - 2021/2022
  */
 
@@ -16,6 +17,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <mpi.h>
 
 //#define N_BODIES    2048
 #define N_BODIES 16		// good for development and testing
@@ -28,6 +30,12 @@ double velx[N_BODIES];
 double vely[N_BODIES];
 double forcex[N_BODIES];
 double forcey[N_BODIES];
+
+double localPositionsX[N_BODIES];
+double localPositionsY[N_BODIES];
+
+double localVelX[N_BODIES];
+double localVelY[N_BODIES];
 
 void initParticles() {
     for (int p=0; p<N_BODIES; p++) {
@@ -64,18 +72,18 @@ void computeForces(int q) {
 }
 
 void moveParticle(int q, double deltat) {
-    posx[q] += deltat*velx[q];
-    posy[q] += deltat*vely[q];
+    posx[q] += deltat*localVelX[q];
+    posy[q] += deltat*localVelX[q];
     velx[q] += deltat/mas[q] * forcex[q];
     vely[q] += deltat/mas[q] * forcey[q];
 }
 
-void simulateStep(double deltat) {
+void simulateStep(double deltat,int loc_n) {
     memset(forcex, 0, sizeof forcex);
     memset(forcey, 0, sizeof forcey);
-    for ( int q=0; q<N_BODIES; q++)
+    for ( int q=loc_n; q<loc_n-1; q++)
         computeForces(q);
-    for (int q=0; q<N_BODIES; q++)
+    for (int q=loc_n; q<loc_n-1; q++)
         moveParticle(q, deltat);
 }
 
@@ -89,17 +97,49 @@ int main(int argc, char *argv[]) {
     }
     double deltat = time/nSteps;
 
+    int rank, size;
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD , &size);
+    MPI_Comm_rank(MPI_COMM_WORLD , &rank);
+    printf("Mpi started from %d of %d\n", rank, size);
+
     printf("Started %d steps!\n", nSteps);
 
-    initParticles();
+    int loc_n= nSteps/size;
+
+    int loc_pos=loc_n*rank;
+
+    if(rank==0){
+        initParticles();
+    }
+
+    MPI_Bcast(mas,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    MPI_Bcast(posx,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    MPI_Bcast(posy,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    MPI_Scatter(velx,loc_n,MPI_DOUBLE,localVelX, loc_n,MPI_DOUBLE,0, MPI_COMM_WORLD);
+    MPI_Scatter(vely,loc_n,MPI_DOUBLE,localVelY, loc_n,MPI_DOUBLE,0, MPI_COMM_WORLD);
+
+
+    for (int s=0; s< nSteps; s++){
+        simulateStep(deltat,loc_pos);
+    }
+
+
+
+
+    //MPI_Allgather(localPositionsX,loc_n,MPI_DOUBLE, posx,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
+
+
     clock_t t = clock();
 
-    for (int s=0; s< nSteps; s++)
-        simulateStep(deltat);
+
 
     t = clock()-t;
+
     printParticles(stdout);		// check if this solution is correct
     printf("time: %f s\n", t/(double)CLOCKS_PER_SEC);
+
+    MPI_Finalize();
 
     return 0;
 }
