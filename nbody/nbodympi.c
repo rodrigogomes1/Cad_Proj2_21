@@ -31,9 +31,6 @@ double vely[N_BODIES];
 double forcex[N_BODIES];
 double forcey[N_BODIES];
 
-double localPositionsX[N_BODIES];
-double localPositionsY[N_BODIES];
-
 double localVelX[N_BODIES];
 double localVelY[N_BODIES];
 
@@ -74,16 +71,17 @@ void computeForces(int q) {
 void moveParticle(int q, double deltat) {
     posx[q] += deltat*localVelX[q];
     posy[q] += deltat*localVelX[q];
-    velx[q] += deltat/mas[q] * forcex[q];
-    vely[q] += deltat/mas[q] * forcey[q];
+    localVelX[q] += deltat/mas[q] * forcex[q];
+    localVelY[q] += deltat/mas[q] * forcey[q];
 }
 
-void simulateStep(double deltat,int loc_n) {
+void simulateStep(double deltat,int loc_pos, int loc_n) {
     memset(forcex, 0, sizeof forcex);
     memset(forcey, 0, sizeof forcey);
-    for ( int q=loc_n; q<loc_n-1; q++)
+
+    for ( int q=loc_pos; q<loc_pos+loc_n; q++)
         computeForces(q);
-    for (int q=loc_n; q<loc_n-1; q++)
+    for (int q=loc_pos; q<loc_pos+loc_n; q++)
         moveParticle(q, deltat);
 }
 
@@ -103,15 +101,21 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD , &rank);
     printf("Mpi started from %d of %d\n", rank, size);
 
-    printf("Started %d steps!\n", nSteps);
+
 
     int loc_n= nSteps/size;
 
     int loc_pos=loc_n*rank;
+    clock_t t;
 
     if(rank==0){
+        printf("Started %d steps!\n", nSteps);
+        printf("Passou \n");
         initParticles();
+        t= clock();
     }
+
+
 
     MPI_Bcast(mas,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
     MPI_Bcast(posx,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
@@ -119,25 +123,21 @@ int main(int argc, char *argv[]) {
     MPI_Scatter(velx,loc_n,MPI_DOUBLE,localVelX, loc_n,MPI_DOUBLE,0, MPI_COMM_WORLD);
     MPI_Scatter(vely,loc_n,MPI_DOUBLE,localVelY, loc_n,MPI_DOUBLE,0, MPI_COMM_WORLD);
 
-
     for (int s=0; s< nSteps; s++){
-        simulateStep(deltat,loc_pos);
+        simulateStep(deltat,loc_pos, loc_n);
+        MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posx,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
+        MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posy,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
+    }
+
+    MPI_Gather(localVelX,loc_n,MPI_DOUBLE,velx,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    MPI_Gather(localVelY,loc_n,MPI_DOUBLE,vely,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    if(rank==0){
+        t = clock()-t;
+        printParticles(stdout);		// check if this solution is correct
+        printf("time: %f s\n", t/(double)CLOCKS_PER_SEC);
     }
 
 
-
-
-    //MPI_Allgather(localPositionsX,loc_n,MPI_DOUBLE, posx,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
-
-
-    clock_t t = clock();
-
-
-
-    t = clock()-t;
-
-    printParticles(stdout);		// check if this solution is correct
-    printf("time: %f s\n", t/(double)CLOCKS_PER_SEC);
 
     MPI_Finalize();
 
