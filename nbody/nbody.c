@@ -18,7 +18,7 @@
 #include <time.h>
 
 //#define N_BODIES    2048
-#define N_BODIES 16		// good for development and testing
+#define N_BODIES 4	// good for development and testing
 #define Gconst  0.1
 
 double mas[N_BODIES];

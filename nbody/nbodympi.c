@@ -20,7 +20,7 @@
 #include <mpi.h>
 
 //#define N_BODIES    2048
-#define N_BODIES 16		// good for development and testing
+#define N_BODIES 4		// good for development and testing
 #define Gconst  0.1
 
 double mas[N_BODIES];
@@ -31,8 +31,8 @@ double vely[N_BODIES];
 double forcex[N_BODIES];
 double forcey[N_BODIES];
 
-double localVelX[N_BODIES];
-double localVelY[N_BODIES];
+double localVelX[1];
+double localVelY[1];
 
 void initParticles() {
     for (int p=0; p<N_BODIES; p++) {
@@ -56,6 +56,7 @@ void printParticles(FILE *f) {
 
 void computeForces(int q) {
     // based on the basic solver from book (not the reduced solver)
+
     for (int k=0; k<N_BODIES; k++) {
         if (k == q) continue; // ignore itself
         double xdiff=posx[q] - posx[k];
@@ -70,7 +71,7 @@ void computeForces(int q) {
 
 void moveParticle(int q, double deltat) {
     posx[q] += deltat*localVelX[q];
-    posy[q] += deltat*localVelX[q];
+    posy[q] += deltat*localVelY[q];
     localVelX[q] += deltat/mas[q] * forcex[q];
     localVelY[q] += deltat/mas[q] * forcey[q];
 }
@@ -103,9 +104,9 @@ int main(int argc, char *argv[]) {
 
 
 
-    int loc_n= nSteps/size;
-
+    int loc_n= N_BODIES/size;
     int loc_pos=loc_n*rank;
+
     clock_t t;
 
     if(rank==0){
@@ -116,23 +117,34 @@ int main(int argc, char *argv[]) {
     }
 
 
-
     MPI_Bcast(mas,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
     MPI_Bcast(posx,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
     MPI_Bcast(posy,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
     MPI_Scatter(velx,loc_n,MPI_DOUBLE,localVelX, loc_n,MPI_DOUBLE,0, MPI_COMM_WORLD);
     MPI_Scatter(vely,loc_n,MPI_DOUBLE,localVelY, loc_n,MPI_DOUBLE,0, MPI_COMM_WORLD);
 
+
     for (int s=0; s< nSteps; s++){
         simulateStep(deltat,loc_pos, loc_n);
         MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posx,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
         MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posy,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
     }
+    for(int i=0; i< N_BODIES; i++){
+        printf("localVelX %f in %d with index  %d\n", localVelX[i],rank,i);
+    }
+
 
     MPI_Gather(localVelX,loc_n,MPI_DOUBLE,velx,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
     MPI_Gather(localVelY,loc_n,MPI_DOUBLE,vely,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+
+    for(int i=0; i< N_BODIES; i++){
+        //printf("VelX %f in %d with index  %d\n", velx[i],rank,i);
+    }
+
+
     if(rank==0){
         t = clock()-t;
+
         printParticles(stdout);		// check if this solution is correct
         printf("time: %f s\n", t/(double)CLOCKS_PER_SEC);
     }
