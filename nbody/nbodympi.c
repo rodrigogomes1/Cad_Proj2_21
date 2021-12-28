@@ -20,7 +20,7 @@
 #include <mpi.h>
 
 //#define N_BODIES    2048
-#define N_BODIES 16		// good for development and testing
+#define N_BODIES 2048		// good for development and testing
 #define Gconst  0.1
 
 double mas[N_BODIES];
@@ -30,6 +30,8 @@ double velx[N_BODIES];
 double vely[N_BODIES];
 double forcex[N_BODIES];
 double forcey[N_BODIES];
+int *offsets;
+int *display;
 
 double *localVelX;
 double *localVelY;
@@ -89,6 +91,31 @@ void simulateStep(double deltat,int loc_pos, int loc_n) {
         localVelIdx++;
     }
 }
+void distributeWork(int size){
+    int counter=0;
+    if (N_BODIES % size == 0) {
+        for (int i = 0; i < size; ++i){
+            offsets[i]=N_BODIES/size;
+            display[i]=counter;
+            counter+=N_BODIES/size;
+        }
+    }else{
+        int zp = size - (N_BODIES % size);
+        int pp = N_BODIES / size;
+        for (int i = 0; i < size; i++) {
+            if (i >= zp){
+                offsets[i]= (pp + 1) ;
+                display[i]=counter;
+                counter+=N_BODIES/size +1;
+            }
+            else{
+                offsets[i]= pp;
+                display[i]=counter;
+                counter+=N_BODIES/size;
+            }
+        }
+    }
+}
 
 int main(int argc, char *argv[]) {
     int nSteps = 100;  // default (you can give this at the command line)
@@ -105,35 +132,55 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD , &rank);
     printf("Mpi started from %d of %d\n", rank, size);
 
-    int loc_n= N_BODIES/size;
-    int loc_pos=loc_n*rank;
-    localVelX= (double*)malloc(loc_n*sizeof(double));
-    localVelY= (double*)malloc(loc_n*sizeof(double));
 
+
+    offsets = (int*) malloc(size*sizeof (int));
+    display = (int*)malloc(size*sizeof (int));
     clock_t t;
 
     if(rank==0){
         printf("Started %d steps!\n", nSteps);
         initParticles();
+        distributeWork(size);
         t= clock();
+
+        for (int i = 0; i < size; i++) {
+            printf("%d\n",display[i]);
+        }
     }
 
-
+    MPI_Bcast(display,size,MPI_INT,0,MPI_COMM_WORLD);
+    MPI_Bcast(offsets,size,MPI_INT,0,MPI_COMM_WORLD);
     MPI_Bcast(mas,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
     MPI_Bcast(posx,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
     MPI_Bcast(posy,N_BODIES,MPI_DOUBLE,0,MPI_COMM_WORLD);
+
+    int loc_pos=0;//loc_n*rank;
+    for(int i = 0;i<rank;i++){
+        loc_pos+=offsets[i];
+    }
+    int loc_n=offsets[rank];
+    printf("Rank %d ,Starting at %d , working on %d\n",rank,loc_pos,loc_n);
+    localVelX= (double*)malloc(loc_n*sizeof(double));
+    localVelY= (double*)malloc(loc_n*sizeof(double));
+
     MPI_Scatter(velx,loc_n,MPI_DOUBLE,localVelX, loc_n,MPI_DOUBLE,0, MPI_COMM_WORLD);
     MPI_Scatter(vely,loc_n,MPI_DOUBLE,localVelY, loc_n,MPI_DOUBLE,0, MPI_COMM_WORLD);
 
 
+
     for (int s=0; s< nSteps; s++){
         simulateStep(deltat,loc_pos, loc_n);
-        MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posx,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
-        MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posy,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
+        MPI_Allgatherv(MPI_IN_PLACE, loc_n, MPI_DOUBLE,posx, offsets, display,MPI_DOUBLE,MPI_COMM_WORLD);
+        MPI_Allgatherv(MPI_IN_PLACE, loc_n, MPI_DOUBLE,posy, offsets, display,MPI_DOUBLE,MPI_COMM_WORLD);
+        //MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posx,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
+        //MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posy,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
     }
 
-    MPI_Gather(localVelX,loc_n,MPI_DOUBLE,velx,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
-    MPI_Gather(localVelY,loc_n,MPI_DOUBLE,vely,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    MPI_Gatherv(localVelX, loc_n, MPI_DOUBLE,velx, offsets, display,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    MPI_Gatherv(localVelY, loc_n, MPI_DOUBLE,vely, offsets, display,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    //MPI_Gather(localVelX,loc_n,MPI_DOUBLE,velx,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    //MPI_Gather(localVelY,loc_n,MPI_DOUBLE,vely,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
 
     if(rank==0){
         t = clock()-t;
@@ -143,6 +190,7 @@ int main(int argc, char *argv[]) {
 
     free(localVelX);
     free(localVelY);
+    free(offsets);
 
     MPI_Finalize();
 
