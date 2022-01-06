@@ -143,10 +143,6 @@ int main(int argc, char *argv[]) {
         initParticles();
         distributeWork(size);
         t= clock();
-
-        for (int i = 0; i < size; i++) {
-            printf("%d\n",display[i]);
-        }
     }
 
     MPI_Bcast(display,size,MPI_INT,0,MPI_COMM_WORLD);
@@ -173,14 +169,10 @@ int main(int argc, char *argv[]) {
         simulateStep(deltat,loc_pos, loc_n);
         MPI_Allgatherv(MPI_IN_PLACE, loc_n, MPI_DOUBLE,posx, offsets, display,MPI_DOUBLE,MPI_COMM_WORLD);
         MPI_Allgatherv(MPI_IN_PLACE, loc_n, MPI_DOUBLE,posy, offsets, display,MPI_DOUBLE,MPI_COMM_WORLD);
-        //MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posx,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
-        //MPI_Allgather(MPI_IN_PLACE,loc_n,MPI_DOUBLE, posy,loc_n,MPI_DOUBLE,MPI_COMM_WORLD);
     }
 
     MPI_Gatherv(localVelX, loc_n, MPI_DOUBLE,velx, offsets, display,MPI_DOUBLE,0,MPI_COMM_WORLD);
     MPI_Gatherv(localVelY, loc_n, MPI_DOUBLE,vely, offsets, display,MPI_DOUBLE,0,MPI_COMM_WORLD);
-    //MPI_Gather(localVelX,loc_n,MPI_DOUBLE,velx,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
-    //MPI_Gather(localVelY,loc_n,MPI_DOUBLE,vely,loc_n,MPI_DOUBLE,0,MPI_COMM_WORLD);
 
     if(rank==0){
         t = clock()-t;

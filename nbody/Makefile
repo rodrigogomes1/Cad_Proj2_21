@@ -1,5 +1,7 @@
 
-all: nbody
+.PHONY: all
+
+all: nbody nbodympi
 
 nbody:	nbody.c
 	cc -o $@ $< -lm
